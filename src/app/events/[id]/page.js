@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { authClient } from "@/lib/auth-client";
 
-// ক্যাটাগরি অনুযায়ী নির্দিষ্ট ও পার্মানেন্ট ছবি ম্যাপিং
+// ক্যাটাগরি অনুযায়ী নির্দিষ্ট ও পার্মানেন্ট ছবি ম্যাপিং
 const CATEGORY_IMAGES = {
   "Donation": "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=800&q=80",
   "Cleanup": "https://images.unsplash.com/photo-1618477461853-cf6ed80faba5?auto=format&fit=crop&w=800&q=80",
@@ -17,6 +18,9 @@ const CATEGORY_IMAGES = {
 
 export default function EventDetailsPage() {
   const { id } = useParams();
+  const router = useRouter();
+  const { data: session } = authClient.useSession();
+
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
@@ -40,13 +44,36 @@ export default function EventDetailsPage() {
     if (id) fetchEvent();
   }, [id]);
 
+  // যদি নিজের ছবি থাকে সেটি দেখাবে, না থাকলে ক্যাটাগরি অনুযায়ী ফিক্সড ছবি দেখাবে
+  const coverImg = event
+    ? event.thumbnail && event.thumbnail.trim() !== ""
+      ? event.thumbnail
+      : CATEGORY_IMAGES[event.category] ||
+        "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=800&q=80"
+    : "";
+
   const handleJoinEvent = async () => {
+    if (!session?.user?.email) {
+      setMessage("⚠️ Please sign in first to join this event.");
+      router.push("/login");
+      return;
+    }
+
     setJoining(true);
     setMessage("");
     try {
-     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/events/${id}/join`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/events/${id}/join`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userEmail: session.user.email,
+          userName: session.user.name || "Volunteer",
+          eventTitle: event.title,
+          eventDate: event.date,
+          location: event.location,
+          category: event.category,
+          image: coverImg,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -55,7 +82,7 @@ export default function EventDetailsPage() {
         setMessage(`⚠️ ${data.error || data.message || "Could not join event."}`);
       }
     } catch (err) {
-      setMessage("⚠️ Please sign in to join this event.");
+      setMessage("⚠️ Something went wrong while joining this event.");
     } finally {
       setJoining(false);
     }
@@ -79,12 +106,6 @@ export default function EventDetailsPage() {
       </div>
     );
   }
-
-  // যদি নিজের ছবি থাকে সেটি দেখাবে, না থাকলে ক্যাটাগরি অনুযায়ী ফিক্সড ছবি দেখাবে
-  const coverImg =
-    event.thumbnail && event.thumbnail.trim() !== ""
-      ? event.thumbnail
-      : CATEGORY_IMAGES[event.category] || "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=800&q=80";
 
   return (
     <div className="min-h-[calc(100vh-140px)] bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
